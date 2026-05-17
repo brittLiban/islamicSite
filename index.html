@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Al-Qarawiyyīn Academy — Sheikh Abdulhakim</title>
+  <meta name="description" content="A small online madrasa. Qur'an, classical Arabic, Fiqh and ʿAqīdah, taught by Sheikh Abdulhakim at the cadence of a traditional seminary."/>
+  <link rel="icon" type="image/svg+xml" href="ornaments/favicon.svg"/>
+  <link rel="stylesheet" href="styles.css"/>
+
+  <template id="__bundler_thumbnail">
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" style="background:#1F3D2E">
+      <rect x="2" y="2" width="60" height="60" rx="3" fill="#1F3D2E"/>
+      <rect x="4.5" y="4.5" width="55" height="55" rx="2" fill="none" stroke="#C9A84C" stroke-width="0.6"/>
+      <path d="M 16 52 L 16 32 Q 16 16 32 12 Q 48 16 48 32 L 48 52 Z" fill="none" stroke="#DCB65E" stroke-width="1.8" stroke-linejoin="round"/>
+      <g transform="translate(32,34)" fill="#DCB65E">
+        <polygon points="0,-6 1.7,-1.7 6,0 1.7,1.7 0,6 -1.7,1.7 -6,0 -1.7,-1.7"/>
+        <polygon points="0,-6 1.7,-1.7 6,0 1.7,1.7 0,6 -1.7,1.7 -6,0 -1.7,-1.7" transform="rotate(45)"/>
+      </g>
+    </svg>
+  </template>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- React + Babel -->
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <!-- Vanilla data first -->
+  <script src="data.js"></script>
+
+  <!-- React components (each scripts babels separately; cross-file refs go through window) -->
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="motifs.jsx"></script>
+  <script type="text/babel" src="components.jsx"></script>
+  <script type="text/babel" src="screens-public.jsx"></script>
+  <script type="text/babel" src="screens-auth-checkout.jsx"></script>
+  <script type="text/babel" src="screens-dashboard.jsx"></script>
+  <script type="text/babel" src="screens-admin.jsx"></script>
+  <script type="text/babel" src="app.jsx"></script>
+</body>
+</html>
