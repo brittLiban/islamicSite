@@ -1,0 +1,199 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String
+  nameArabic   String?
+  passwordHash String?
+  googleId     String?  @unique
+  role         String   @default("student")
+  timeZone     String   @default("UTC")
+  language     String   @default("en")
+  createdAt    DateTime @default(now())
+
+  instructor   Instructor?
+  enrollments  Enrollment[]
+  progress     LessonProgress[]
+  notes        Note[]
+  ijazah       Ijazah[]
+  testimonials Testimonial[]
+  purchases    Purchase[]
+}
+
+model Instructor {
+  id           String  @id @default(cuid())
+  userId       String  @unique
+  user         User    @relation(fields: [userId], references: [id])
+  title        String
+  bio          String  @db.Text
+  signatureSvg String? @db.Text
+  courses      Course[]
+}
+
+model Category {
+  id          String   @id @default(cuid())
+  slug        String   @unique
+  label       String
+  labelArabic String
+  sortOrder   Int      @default(0)
+  courses     Course[]
+}
+
+model Course {
+  id                  String     @id @default(cuid())
+  slug                String     @unique
+  instructorId        String
+  instructor          Instructor @relation(fields: [instructorId], references: [id])
+  categoryId          String
+  category            Category   @relation(fields: [categoryId], references: [id])
+  title               String
+  titleArabic         String
+  titleSomali         String?
+  blurb               String
+  lede                String     @db.Text
+  priceCents          Int
+  level               String
+  durationLabel       String
+  coverPalette        String     @default("forest")
+  isPublished         Boolean    @default(false)
+  studentsCountDenorm Int        @default(0)
+  ratingDenorm        Decimal    @default(0) @db.Decimal(3, 2)
+  createdAt           DateTime   @default(now())
+  updatedAt           DateTime   @updatedAt
+
+  modules      Module[]
+  enrollments  Enrollment[]
+  testimonials Testimonial[]
+  coupons      Coupon[]
+  purchases    Purchase[]
+  ijazah       Ijazah[]
+}
+
+model Module {
+  id        String   @id @default(cuid())
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  title     String
+  sortOrder Int      @default(0)
+  lessons   Lesson[]
+}
+
+model Lesson {
+  id              String   @id @default(cuid())
+  moduleId        String
+  module          Module   @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  title           String
+  titleArabic     String?
+  durationSeconds Int      @default(0)
+  isFreePreview   Boolean  @default(false)
+  muxPlaybackId   String?
+  sortOrder       Int      @default(0)
+
+  resources LessonResource[]
+  progress  LessonProgress[]
+  notes     Note[]
+}
+
+model LessonResource {
+  id        String @id @default(cuid())
+  lessonId  String
+  lesson    Lesson @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  kind      String
+  name      String
+  sizeBytes Int    @default(0)
+  url       String
+}
+
+model Enrollment {
+  id                    String   @id @default(cuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id])
+  courseId              String
+  course                Course   @relation(fields: [courseId], references: [id])
+  stripePaymentIntentId String?
+  amountPaidCents       Int
+  couponCode            String?
+  createdAt             DateTime @default(now())
+
+  @@unique([userId, courseId])
+}
+
+model LessonProgress {
+  userId              String
+  user                User     @relation(fields: [userId], references: [id])
+  lessonId            String
+  lesson              Lesson   @relation(fields: [lessonId], references: [id])
+  lastPositionSeconds Int      @default(0)
+  completedAt         DateTime?
+
+  @@id([userId, lessonId])
+}
+
+model Note {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  lessonId  String
+  lesson    Lesson   @relation(fields: [lessonId], references: [id])
+  body      String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, lessonId])
+}
+
+model Ijazah {
+  id          String   @id @default(cuid())
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id])
+  referenceNo String   @unique
+  issuedAt    DateTime @default(now())
+  pdfUrl      String?
+}
+
+model Testimonial {
+  id           String  @id @default(cuid())
+  courseId     String?
+  course       Course? @relation(fields: [courseId], references: [id])
+  userId       String?
+  user         User?   @relation(fields: [userId], references: [id])
+  body         String  @db.Text
+  nameOverride String?
+  titleText    String?
+  published    Boolean @default(false)
+}
+
+model Coupon {
+  code       String    @id
+  percentOff Int
+  maxUses    Int
+  usedCount  Int       @default(0)
+  courseId   String?
+  course     Course?   @relation(fields: [courseId], references: [id])
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+}
+
+model Purchase {
+  id             String    @id @default(cuid())
+  userId         String
+  user           User      @relation(fields: [userId], references: [id])
+  courseId       String
+  course         Course    @relation(fields: [courseId], references: [id])
+  amountCents    Int
+  stripeChargeId String?
+  methodBrand    String?
+  methodLast4    String?
+  status         String    @default("succeeded")
+  createdAt      DateTime  @default(now())
+  refundedAt     DateTime?
+}

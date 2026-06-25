@@ -1,0 +1,36 @@
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: qarawiyyin
+      POSTGRES_PASSWORD: qarawiyyin
+      POSTGRES_DB: qarawiyyin
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U qarawiyyin"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+  web:
+    build:
+      context: ./web
+      dockerfile: Dockerfile.dev
+    volumes:
+      - ./web:/app
+      - /app/node_modules
+      - /app/.next
+    environment:
+      - DATABASE_URL=postgresql://qarawiyyin:qarawiyyin@db:5432/qarawiyyin
+      - NEXTAUTH_SECRET=dev-secret-change-in-production
+      - NEXTAUTH_URL=http://localhost:3001
+      - WATCHPACK_POLLING=true
+      - NODE_ENV=development
+    ports:
+      - "3001:3000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  db-data:
