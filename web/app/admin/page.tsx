@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { auth } from '@/auth'
 import { Mark } from '@/components/ui/mark'
-import { courses as staticCourses, instructor } from '@/lib/data'
+import { instructor } from '@/lib/data'
 import { logout } from '@/lib/actions'
 import { db } from '@/lib/db'
 
@@ -15,14 +15,8 @@ export default async function AdminPage() {
     orderBy: { createdAt: 'asc' },
     include: { category: true, _count: { select: { enrollments: true } } },
   })
-  const courses = dbCourses.length > 0 ? dbCourses : staticCourses.map((c) => ({
-    id: c.id, title: c.title, titleArabic: c.arabic, slug: c.slug,
-    priceCents: c.price * 100, isPublished: true,
-    category: { label: c.catLabel }, _count: { enrollments: c.students },
-    studentsCountDenorm: c.students, ratingDenorm: c.rating,
-  }))
-  const totalStudents = courses.reduce((acc, c) => acc + ('_count' in c ? c._count.enrollments : (c as { students: number }).students), 0)
-  const totalRevenueCents = dbCourses.reduce((acc, c) => acc + c.priceCents * (c._count?.enrollments ?? 0), 0)
+  const totalStudents = dbCourses.reduce((acc, c) => acc + c._count.enrollments, 0)
+  const totalRevenueCents = dbCourses.reduce((acc, c) => acc + c.priceCents * c._count.enrollments, 0)
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--paper-2)' }}>
@@ -116,9 +110,9 @@ export default async function AdminPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 48 }}>
           {[
             { label: 'Total students', value: totalStudents.toLocaleString(), sub: 'across all courses' },
-            { label: 'Active courses', value: dbCourses.filter(c => c.isPublished).length || staticCourses.length, sub: 'published' },
+            { label: 'Active courses', value: dbCourses.filter(c => c.isPublished).length, sub: 'published' },
             { label: 'Est. revenue', value: `$${Math.round(totalRevenueCents / 100).toLocaleString()}`, sub: 'lifetime (enrolled)' },
-            { label: 'Avg. rating', value: staticCourses.length > 0 ? (staticCourses.reduce((a, c) => a + c.rating, 0) / staticCourses.length).toFixed(1) : '—', sub: 'out of 5.0' },
+            { label: 'Total courses', value: dbCourses.length, sub: 'in catalogue' },
           ].map((s) => (
             <div key={s.label} className="card">
               <div style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 700, color: 'var(--accent)', marginBottom: 4 }}>
@@ -130,63 +124,53 @@ export default async function AdminPage() {
           ))}
         </div>
 
-        {/* Courses table */}
+        {/* Courses summary */}
         <section style={{ marginBottom: 48 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 16 }}>
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 500, margin: 0 }}>
               Courses
             </h2>
-            <Link href="/admin/courses/new" className="btn btn--primary btn--sm" style={{ textDecoration: 'none' }}>
-              + New course
-            </Link>
+            <div style={{ display: 'flex', gap: 12 }}>
+              <Link href="/admin/courses/new" className="btn btn--primary btn--sm" style={{ textDecoration: 'none' }}>
+                + New course
+              </Link>
+              <Link href="/admin/courses" className="btn btn--secondary btn--sm" style={{ textDecoration: 'none' }}>
+                Manage all →
+              </Link>
+            </div>
           </div>
-          <div style={{
-            background: 'var(--paper)',
-            border: '1px solid var(--border)',
-            borderRadius: 'var(--radius-md)',
-            overflow: 'hidden',
-          }}>
+          <div style={{ background: 'var(--paper)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'hidden' }}>
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 14 }}>
               <thead>
                 <tr style={{ borderBottom: '1px solid var(--border)', background: 'var(--paper-2)' }}>
-                  {['Course', 'Category', 'Lessons', 'Students', 'Rating', 'Price', ''].map((h) => (
-                    <th key={h} style={{
-                      padding: '10px 16px',
-                      textAlign: 'left',
-                      fontFamily: 'var(--font-sc)',
-                      fontVariant: 'small-caps',
-                      fontSize: 11,
-                      letterSpacing: '0.15em',
-                      color: 'var(--fg-3)',
-                      fontWeight: 600,
-                    }}>
+                  {['Course', 'Category', 'Students', 'Price', 'Status', ''].map((h) => (
+                    <th key={h} style={{ padding: '10px 16px', textAlign: 'left', fontFamily: 'var(--font-sc)', fontVariant: 'small-caps', fontSize: 11, letterSpacing: '0.15em', color: 'var(--fg-3)', fontWeight: 600 }}>
                       {h}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {staticCourses.map((c, i) => (
-                  <tr key={c.id} style={{ borderBottom: i < staticCourses.length - 1 ? '1px solid var(--border-soft)' : 'none' }}>
+                {dbCourses.map((c, i) => (
+                  <tr key={c.id} style={{ borderBottom: i < dbCourses.length - 1 ? '1px solid var(--border-soft)' : 'none' }}>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ fontWeight: 500 }}>{c.title}</div>
-                      <div style={{ fontFamily: 'var(--font-arabic)', fontSize: 12, color: 'var(--gold-3)', direction: 'rtl', textAlign: 'left' }}>
-                        {c.arabic}
-                      </div>
                     </td>
-                    <td style={{ padding: '12px 16px', color: 'var(--fg-3)' }}>{c.catLabel}</td>
-                    <td style={{ padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{c.lessons}</td>
-                    <td style={{ padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: 13 }}>{c.students.toLocaleString()}</td>
-                    <td style={{ padding: '12px 16px' }}>
-                      <span style={{ color: 'var(--gold-3)', marginRight: 3 }}>★</span>
-                      <span style={{ fontFamily: 'var(--font-mono)', fontSize: 13 }}>{c.rating}</span>
+                    <td style={{ padding: '12px 16px', color: 'var(--fg-3)' }}>{c.category.label}</td>
+                    <td style={{ padding: '12px 16px', fontFamily: 'var(--font-mono)', fontSize: 13 }}>
+                      {c._count.enrollments.toLocaleString()}
                     </td>
                     <td style={{ padding: '12px 16px', fontFamily: 'var(--font-display)', fontWeight: 600, color: 'var(--accent)' }}>
-                      ${c.price}
+                      ${(c.priceCents / 100).toFixed(0)}
                     </td>
                     <td style={{ padding: '12px 16px' }}>
-                      <Link href={`/courses/${c.slug}`} style={{ fontSize: 12, color: 'var(--accent)', textDecoration: 'none' }}>
-                        View →
+                      <span style={{ fontSize: 11, fontWeight: 600, color: c.isPublished ? 'var(--forest)' : 'var(--fg-muted)', border: `1px solid ${c.isPublished ? 'var(--forest)' : 'var(--border)'}`, borderRadius: 4, padding: '2px 8px' }}>
+                        {c.isPublished ? 'Published' : 'Draft'}
+                      </span>
+                    </td>
+                    <td style={{ padding: '12px 16px' }}>
+                      <Link href={`/admin/courses/${c.id}`} style={{ fontSize: 13, color: 'var(--accent)', textDecoration: 'none' }}>
+                        Edit →
                       </Link>
                     </td>
                   </tr>
