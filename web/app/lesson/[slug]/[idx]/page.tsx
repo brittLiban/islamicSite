@@ -3,6 +3,7 @@ import Link from 'next/link'
 import { auth } from '@/auth'
 import { Mark } from '@/components/ui/mark'
 import { courses, curricula } from '@/lib/data'
+import { NotesTab } from './NotesTab'
 
 export default async function LessonPage({
   params,
@@ -93,6 +94,9 @@ export default async function LessonPage({
               </div>
             </div>
           </div>
+
+          {/* Notes + transcript tabs */}
+          <NotesTab lessonTitle={lesson?.title ?? 'Lesson'} />
 
           {/* Lesson info + navigation */}
           <div style={{ padding: '28px 32px', background: 'var(--paper)', flex: 1 }}>

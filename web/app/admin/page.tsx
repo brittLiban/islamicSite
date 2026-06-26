@@ -2,16 +2,27 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { auth } from '@/auth'
 import { Mark } from '@/components/ui/mark'
-import { courses, instructor } from '@/lib/data'
+import { courses as staticCourses, instructor } from '@/lib/data'
 import { logout } from '@/lib/actions'
-
-const totalStudents = courses.reduce((acc, c) => acc + c.students, 0)
-const totalRevenue = courses.reduce((acc, c) => acc + c.price * c.students * 0.6, 0)
+import { db } from '@/lib/db'
 
 export default async function AdminPage() {
   const session = await auth()
   if (!session?.user) redirect('/login')
   if ((session.user as { role?: string }).role !== 'admin') redirect('/dashboard')
+
+  const dbCourses = await db.course.findMany({
+    orderBy: { createdAt: 'asc' },
+    include: { category: true, _count: { select: { enrollments: true } } },
+  })
+  const courses = dbCourses.length > 0 ? dbCourses : staticCourses.map((c) => ({
+    id: c.id, title: c.title, titleArabic: c.arabic, slug: c.slug,
+    priceCents: c.price * 100, isPublished: true,
+    category: { label: c.catLabel }, _count: { enrollments: c.students },
+    studentsCountDenorm: c.students, ratingDenorm: c.rating,
+  }))
+  const totalStudents = courses.reduce((acc, c) => acc + ('_count' in c ? c._count.enrollments : (c as { students: number }).students), 0)
+  const totalRevenueCents = dbCourses.reduce((acc, c) => acc + c.priceCents * (c._count?.enrollments ?? 0), 0)
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', background: 'var(--paper-2)' }}>
@@ -105,9 +116,9 @@ export default async function AdminPage() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 20, marginBottom: 48 }}>
           {[
             { label: 'Total students', value: totalStudents.toLocaleString(), sub: 'across all courses' },
-            { label: 'Active courses', value: courses.length, sub: 'published' },
-            { label: 'Est. revenue', value: `$${Math.round(totalRevenue / 1000)}k`, sub: 'lifetime' },
-            { label: 'Avg. rating', value: (courses.reduce((a, c) => a + c.rating, 0) / courses.length).toFixed(1), sub: 'out of 5.0' },
+            { label: 'Active courses', value: dbCourses.filter(c => c.isPublished).length || staticCourses.length, sub: 'published' },
+            { label: 'Est. revenue', value: `$${Math.round(totalRevenueCents / 100).toLocaleString()}`, sub: 'lifetime (enrolled)' },
+            { label: 'Avg. rating', value: staticCourses.length > 0 ? (staticCourses.reduce((a, c) => a + c.rating, 0) / staticCourses.length).toFixed(1) : '—', sub: 'out of 5.0' },
           ].map((s) => (
             <div key={s.label} className="card">
               <div style={{ fontFamily: 'var(--font-display)', fontSize: 36, fontWeight: 700, color: 'var(--accent)', marginBottom: 4 }}>
@@ -125,7 +136,9 @@ export default async function AdminPage() {
             <h2 style={{ fontFamily: 'var(--font-display)', fontSize: 24, fontWeight: 500, margin: 0 }}>
               Courses
             </h2>
-            <button className="btn btn--primary btn--sm">+ New course</button>
+            <Link href="/admin/courses/new" className="btn btn--primary btn--sm" style={{ textDecoration: 'none' }}>
+              + New course
+            </Link>
           </div>
           <div style={{
             background: 'var(--paper)',
@@ -153,8 +166,8 @@ export default async function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {courses.map((c, i) => (
-                  <tr key={c.id} style={{ borderBottom: i < courses.length - 1 ? '1px solid var(--border-soft)' : 'none' }}>
+                {staticCourses.map((c, i) => (
+                  <tr key={c.id} style={{ borderBottom: i < staticCourses.length - 1 ? '1px solid var(--border-soft)' : 'none' }}>
                     <td style={{ padding: '12px 16px' }}>
                       <div style={{ fontWeight: 500 }}>{c.title}</div>
                       <div style={{ fontFamily: 'var(--font-arabic)', fontSize: 12, color: 'var(--gold-3)', direction: 'rtl', textAlign: 'left' }}>
