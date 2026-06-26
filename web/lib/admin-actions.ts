@@ -153,3 +153,31 @@ export async function deleteLesson(id: string, courseId: string) {
   await db.lesson.delete({ where: { id } })
   revalidatePath(`/admin/courses/${courseId}`)
 }
+
+// ── Coupons ──────────────────────────────────────────────────
+
+export async function createCoupon(_prev: string | null, formData: FormData): Promise<string | null> {
+  await requireAdmin()
+
+  const code = (formData.get('code') as string).trim().toUpperCase()
+  const percentOff = parseInt(formData.get('percentOff') as string)
+  const maxUses = parseInt(formData.get('maxUses') as string)
+  const expiresAt = formData.get('expiresAt') as string
+
+  if (!code || !percentOff || !maxUses) return 'Code, discount %, and max uses are required.'
+  if (percentOff < 1 || percentOff > 100) return 'Discount must be 1–100%.'
+  if (!/^[A-Z0-9_-]+$/.test(code)) return 'Code may only contain letters, numbers, hyphens, and underscores.'
+
+  const existing = await db.coupon.findUnique({ where: { code } })
+  if (existing) return 'A coupon with this code already exists.'
+
+  await db.coupon.create({ data: { code, percentOff, maxUses, expiresAt: expiresAt ? new Date(expiresAt) : null } })
+  revalidatePath('/admin/coupons')
+  return null
+}
+
+export async function deleteCoupon(code: string) {
+  await requireAdmin()
+  await db.coupon.delete({ where: { code } })
+  revalidatePath('/admin/coupons')
+}
