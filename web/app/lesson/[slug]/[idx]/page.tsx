@@ -1,9 +1,22 @@
 import { redirect, notFound } from 'next/navigation'
 import Link from 'next/link'
 import { auth } from '@/auth'
+import { db } from '@/lib/db'
 import { Mark } from '@/components/ui/mark'
 import { courses, curricula } from '@/lib/data'
 import { NotesTab } from './NotesTab'
+import { VideoPlayer } from './VideoPlayer'
+
+type LessonRow = {
+  id: string
+  title: string
+  durationSeconds: number
+  hlsReady: boolean
+  hlsKey: string | null
+  isFreePreview: boolean
+  moduleTitle: string
+  globalIdx: number
+}
 
 export default async function LessonPage({
   params,
@@ -14,18 +27,72 @@ export default async function LessonPage({
   if (!session?.user) redirect('/login')
 
   const { slug, idx } = await params
-  const course = courses.find((c) => c.slug === slug)
-  if (!course) notFound()
 
-  const modules = curricula[slug] ?? []
-  const allLessons = modules.flatMap((m, mi) =>
-    m.lessons.map((l, li) => ({ ...l, moduleTitle: m.title, moduleIdx: mi, lessonIdx: li }))
-  )
+  // ── Fetch from DB, fall back to static data ──────────────────
+  let courseTitle = ''
+  let allLessons: LessonRow[] = []
+  let modules: { title: string; lessons: LessonRow[] }[] = []
+
+  const dbCourse = await db.course.findUnique({
+    where: { slug },
+    include: {
+      modules: {
+        orderBy: { sortOrder: 'asc' },
+        include: { lessons: { orderBy: { sortOrder: 'asc' } } },
+      },
+    },
+  }).catch(() => null)
+
+  if (dbCourse && dbCourse.modules.length > 0) {
+    courseTitle = dbCourse.title
+    let g = 0
+    modules = dbCourse.modules.map((m) => ({
+      title: m.title,
+      lessons: m.lessons.map((l) => ({
+        id: l.id,
+        title: l.title,
+        durationSeconds: l.durationSeconds,
+        hlsReady: l.hlsReady,
+        hlsKey: l.hlsKey,
+        isFreePreview: l.isFreePreview,
+        moduleTitle: m.title,
+        globalIdx: g++,
+      })),
+    }))
+    allLessons = modules.flatMap((m) => m.lessons)
+  } else {
+    // Static fallback
+    const staticCourse = courses.find((c) => c.slug === slug)
+    if (!staticCourse) notFound()
+    courseTitle = staticCourse.title
+    const staticModules = curricula[slug] ?? []
+    let g = 0
+    modules = staticModules.map((m) => ({
+      title: m.title,
+      lessons: m.lessons.map((l) => ({
+        id: '',
+        title: l.title,
+        durationSeconds: 0,
+        hlsReady: false,
+        hlsKey: null,
+        isFreePreview: l.free ?? false,
+        moduleTitle: m.title,
+        globalIdx: g++,
+      })),
+    }))
+    allLessons = modules.flatMap((m) => m.lessons)
+  }
+
+  if (allLessons.length === 0) notFound()
 
   const lessonIdx = Math.max(0, parseInt(idx, 10) - 1)
   const lesson = allLessons[lessonIdx] ?? allLessons[0]
   const prevLesson = lessonIdx > 0 ? allLessons[lessonIdx - 1] : null
   const nextLesson = lessonIdx < allLessons.length - 1 ? allLessons[lessonIdx + 1] : null
+
+  const durationLabel = lesson.durationSeconds > 0
+    ? `${Math.floor(lesson.durationSeconds / 60)} min`
+    : null
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', flexDirection: 'column', background: 'var(--ink)' }}>
@@ -45,7 +112,7 @@ export default async function LessonPage({
         </Link>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div style={{ fontSize: 11, color: 'rgba(245,237,216,0.5)', fontVariant: 'small-caps', letterSpacing: '0.15em', marginBottom: 2 }}>
-            {course.title}
+            {courseTitle}
           </div>
           <div style={{
             fontFamily: 'var(--font-display)',
@@ -55,7 +122,7 @@ export default async function LessonPage({
             overflow: 'hidden',
             textOverflow: 'ellipsis',
           }}>
-            {lesson?.title ?? 'Lesson'}
+            {lesson.title}
           </div>
         </div>
         <Link href="/dashboard" style={{ fontSize: 13, color: 'rgba(245,237,216,0.5)', textDecoration: 'none', flexShrink: 0 }}>
@@ -71,50 +138,45 @@ export default async function LessonPage({
 
           {/* Video region */}
           <div style={{ background: '#000', aspectRatio: '16/9', position: 'relative', maxHeight: '65vh' }}>
-            <div style={{
-              position: 'absolute',
-              inset: 0,
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: 'var(--paper)',
-            }}>
-              <div style={{ fontSize: 64, marginBottom: 20, opacity: 0.3 }}>▶</div>
+            {lesson.hlsReady && lesson.id ? (
+              <VideoPlayer lessonId={lesson.id} />
+            ) : (
               <div style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 20,
-                color: 'rgba(245,237,216,0.5)',
-                fontStyle: 'italic',
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: 'var(--paper)',
               }}>
-                Video coming soon
+                <div style={{ fontSize: 64, marginBottom: 20, opacity: 0.3 }}>▶</div>
+                <div style={{ fontFamily: 'var(--font-display)', fontSize: 20, color: 'rgba(245,237,216,0.5)', fontStyle: 'italic' }}>
+                  Video coming soon
+                </div>
+                {durationLabel && (
+                  <div style={{ fontSize: 13, color: 'rgba(245,237,216,0.3)', marginTop: 8 }}>
+                    {durationLabel}
+                  </div>
+                )}
               </div>
-              <div style={{ fontSize: 13, color: 'rgba(245,237,216,0.3)', marginTop: 8 }}>
-                {lesson?.duration}
-              </div>
-            </div>
+            )}
           </div>
 
-          {/* Notes + transcript tabs */}
-          <NotesTab lessonTitle={lesson?.title ?? 'Lesson'} />
+          {/* Notes + transcript */}
+          <NotesTab lessonTitle={lesson.title} />
 
-          {/* Lesson info + navigation */}
+          {/* Lesson info + nav */}
           <div style={{ padding: '28px 32px', background: 'var(--paper)', flex: 1 }}>
             <div style={{ maxWidth: 800 }}>
-              <div className="eyebrow" style={{ marginBottom: 8 }}>{lesson?.moduleTitle}</div>
-              <h1 style={{
-                fontFamily: 'var(--font-display)',
-                fontSize: 30,
-                fontWeight: 500,
-                margin: '0 0 16px',
-              }}>
-                {lesson?.title ?? 'Lesson'}
+              <div className="eyebrow" style={{ marginBottom: 8 }}>{lesson.moduleTitle}</div>
+              <h1 style={{ fontFamily: 'var(--font-display)', fontSize: 30, fontWeight: 500, margin: '0 0 16px' }}>
+                {lesson.title}
               </h1>
               <p style={{ color: 'var(--fg-2)', fontStyle: 'italic', lineHeight: 1.7, marginBottom: 28 }}>
-                This lesson is part of {course.title}. Lesson notes and transcript will appear here once the video has been watched.
+                This lesson is part of {courseTitle}. Lesson notes and transcript will appear here once the video has been watched.
               </p>
 
-              {/* Nav buttons */}
               <div style={{ display: 'flex', gap: 12 }}>
                 {prevLesson && (
                   <Link
@@ -136,7 +198,7 @@ export default async function LessonPage({
                 )}
                 {!nextLesson && (
                   <div style={{ fontSize: 14, color: 'var(--fg-3)', fontStyle: 'italic', padding: '9px 0' }}>
-                    This is the last lesson. Well done — may Allah accept it from you.
+                    This is the last lesson. May Allah accept it from you.
                   </div>
                 )}
               </div>
@@ -174,13 +236,13 @@ export default async function LessonPage({
               }}>
                 {mod.title}
               </div>
-              {mod.lessons.map((l, li) => {
-                const globalIdx = modules.slice(0, mi).reduce((acc, m) => acc + m.lessons.length, 0) + li
-                const isActive = globalIdx === lessonIdx
+              {mod.lessons.map((l) => {
+                const isActive = l.globalIdx === lessonIdx
+                const dur = l.durationSeconds > 0 ? `${Math.floor(l.durationSeconds / 60)} min` : null
                 return (
                   <Link
-                    key={li}
-                    href={`/lesson/${slug}/${globalIdx + 1}`}
+                    key={l.globalIdx}
+                    href={`/lesson/${slug}/${l.globalIdx + 1}`}
                     style={{
                       display: 'flex',
                       alignItems: 'flex-start',
@@ -192,21 +254,16 @@ export default async function LessonPage({
                       borderLeft: isActive ? '3px solid var(--forest)' : '3px solid transparent',
                     }}
                   >
-                    <span style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2, flexShrink: 0 }}>
-                      {isActive ? '▶' : '○'}
+                    <span style={{ fontSize: 11, color: l.hlsReady ? 'var(--forest)' : 'var(--fg-muted)', marginTop: 2, flexShrink: 0 }}>
+                      {isActive ? '▶' : l.hlsReady ? '●' : '○'}
                     </span>
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{
-                        fontSize: 13,
-                        color: isActive ? 'var(--forest)' : 'var(--fg-2)',
-                        fontWeight: isActive ? 600 : 400,
-                        lineHeight: 1.4,
-                      }}>
+                      <div style={{ fontSize: 13, color: isActive ? 'var(--forest)' : 'var(--fg-2)', fontWeight: isActive ? 600 : 400, lineHeight: 1.4 }}>
                         {l.title}
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--fg-muted)', marginTop: 2, fontFamily: 'var(--font-mono)' }}>
-                        {l.duration}
-                        {l.free && <span style={{ marginLeft: 6, color: 'var(--gold-3)' }}>· free</span>}
+                        {dur ?? '—'}
+                        {l.isFreePreview && <span style={{ marginLeft: 6, color: 'var(--gold-3)' }}>· free</span>}
                       </div>
                     </div>
                   </Link>

@@ -1,10 +1,131 @@
 'use client'
 
-import { useActionState, useState } from 'react'
+import { useActionState, useState, useRef } from 'react'
 import { createModule, deleteModule, createLesson, deleteLesson } from '@/lib/admin-actions'
 
-type Lesson = { id: string; title: string; titleArabic: string | null; durationSeconds: number; isFreePreview: boolean; sortOrder: number }
+type Lesson = {
+  id: string
+  title: string
+  titleArabic: string | null
+  durationSeconds: number
+  isFreePreview: boolean
+  hlsReady: boolean
+  sortOrder: number
+}
 type Module = { id: string; title: string; sortOrder: number; lessons: Lesson[] }
+
+function UploadButton({ lesson, courseId }: { lesson: Lesson; courseId: string }) {
+  const inputRef = useRef<HTMLInputElement>(null)
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'queued' | 'error'>('idle')
+  const [progress, setProgress] = useState(0)
+
+  async function handleFile(file: File) {
+    setStatus('uploading')
+    setProgress(0)
+
+    try {
+      // 1. Get presigned upload URL
+      const urlRes = await fetch('/api/admin/upload-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId: lesson.id, fileName: file.name }),
+      })
+      const { url, rawKey } = await urlRes.json() as { url: string; rawKey: string }
+
+      // 2. Upload directly to MinIO
+      await new Promise<void>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100))
+        }
+        xhr.onload = () => (xhr.status < 300 ? resolve() : reject(new Error(`Upload failed: ${xhr.status}`)))
+        xhr.onerror = () => reject(new Error('Network error'))
+        xhr.open('PUT', url)
+        xhr.setRequestHeader('Content-Type', 'video/mp4')
+        xhr.send(file)
+      })
+
+      // 3. Enqueue transcoding job
+      await fetch('/api/admin/upload-complete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lessonId: lesson.id, rawKey }),
+      })
+
+      setStatus('queued')
+    } catch (err) {
+      console.error(err)
+      setStatus('error')
+    }
+  }
+
+  if (lesson.hlsReady) {
+    return (
+      <span style={{ fontSize: 11, color: 'var(--forest)', fontWeight: 600, padding: '2px 8px', background: 'var(--forest-soft)', borderRadius: 4 }}>
+        ✓ Video ready
+      </span>
+    )
+  }
+
+  if (status === 'queued') {
+    return (
+      <span style={{ fontSize: 11, color: 'var(--gold-3)', padding: '2px 8px' }}>
+        ⏳ Transcoding…
+      </span>
+    )
+  }
+
+  if (status === 'uploading') {
+    return (
+      <span style={{ fontSize: 11, color: 'var(--fg-3)', fontFamily: 'var(--font-mono)', padding: '2px 4px' }}>
+        {progress}%
+      </span>
+    )
+  }
+
+  if (status === 'error') {
+    return (
+      <button
+        type="button"
+        onClick={() => setStatus('idle')}
+        style={{ fontSize: 11, color: '#b91c1c', background: 'none', border: 'none', cursor: 'pointer' }}
+      >
+        ✕ Error — retry
+      </button>
+    )
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="video/*"
+        style={{ display: 'none' }}
+        onChange={(e) => {
+          const file = e.target.files?.[0]
+          if (file) handleFile(file)
+        }}
+      />
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        style={{
+          fontSize: 11,
+          padding: '3px 10px',
+          background: 'var(--paper-2)',
+          border: '1px solid var(--border)',
+          borderRadius: 4,
+          cursor: 'pointer',
+          color: 'var(--fg-2)',
+        }}
+        title="Upload video for this lesson"
+      >
+        ↑ Upload video
+      </button>
+    </>
+  )
+}
 
 function LessonRow({ lesson, courseId, moduleId }: { lesson: Lesson; courseId: string; moduleId: string }) {
   const mins = Math.floor(lesson.durationSeconds / 60)
@@ -18,7 +139,9 @@ function LessonRow({ lesson, courseId, moduleId }: { lesson: Lesson; courseId: s
       background: 'var(--paper)',
       fontSize: 14,
     }}>
-      <span style={{ color: 'var(--fg-muted)', fontSize: 12 }}>▶</span>
+      <span style={{ color: lesson.hlsReady ? 'var(--forest)' : 'var(--fg-muted)', fontSize: 12 }}>
+        {lesson.hlsReady ? '●' : '▷'}
+      </span>
       <span style={{ flex: 1, color: 'var(--fg-2)' }}>{lesson.title}</span>
       {lesson.titleArabic && (
         <span style={{ fontFamily: 'var(--font-arabic)', fontSize: 13, color: 'var(--gold-3)', direction: 'rtl' }}>
@@ -27,6 +150,7 @@ function LessonRow({ lesson, courseId, moduleId }: { lesson: Lesson; courseId: s
       )}
       {lesson.isFreePreview && <span className="badge badge--gold" style={{ fontSize: 10 }}>Preview</span>}
       {mins > 0 && <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--fg-3)' }}>{mins} min</span>}
+      <UploadButton lesson={lesson} courseId={courseId} />
       <button
         type="button"
         onClick={() => deleteLesson(lesson.id, courseId)}
@@ -146,17 +270,11 @@ export function ModuleManager({ courseId, modules }: { courseId: string; modules
         <ModuleSection key={mod.id} mod={mod} courseId={courseId} />
       ))}
 
-      {/* Add module form */}
       <form action={action} style={{ display: 'flex', gap: 10, alignItems: 'flex-start', marginTop: 16 }}>
         <input type="hidden" name="courseId" value={courseId} />
         <div style={{ flex: 1 }}>
           {error && <div style={{ color: '#b91c1c', fontSize: 12, marginBottom: 6 }}>{error}</div>}
-          <input
-            name="title"
-            required
-            placeholder="New module title…"
-            className="field"
-          />
+          <input name="title" required placeholder="New module title…" className="field" />
         </div>
         <button type="submit" disabled={pending} className="btn btn--secondary btn--md">
           {pending ? '…' : '+ Add module'}

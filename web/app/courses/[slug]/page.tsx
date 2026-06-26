@@ -4,7 +4,8 @@ import { TopNav } from '@/components/layout/top-nav'
 import { Footer } from '@/components/layout/footer'
 import { CoursePoster } from '@/components/course/course-poster'
 import { Divider } from '@/components/ui/divider'
-import { courses, curricula, instructor } from '@/lib/data'
+import { db } from '@/lib/db'
+import { courses, curricula, instructor, type ModuleMeta } from '@/lib/data'
 import { CurriculumAccordion } from './CurriculumAccordion'
 
 const badgeVariant = (color: string) => {
@@ -27,7 +28,31 @@ export default async function CourseDetailPage({
   const course = courses.find((c) => c.slug === slug)
   if (!course) notFound()
 
-  const modules = curricula[slug] ?? []
+  // Try to fetch live curriculum from DB; fall back to static data
+  let modules: ModuleMeta[] = []
+  try {
+    const dbCourse = await db.course.findUnique({
+      where: { slug },
+      include: {
+        modules: {
+          orderBy: { sortOrder: 'asc' },
+          include: { lessons: { orderBy: { sortOrder: 'asc' } } },
+        },
+      },
+    })
+    if (dbCourse && dbCourse.modules.length > 0) {
+      modules = dbCourse.modules.map((m) => ({
+        title: m.title,
+        lessons: m.lessons.map((l) => ({
+          title: l.title,
+          duration: l.durationSeconds > 0 ? `${Math.floor(l.durationSeconds / 60)} min` : '—',
+          free: l.isFreePreview,
+        })),
+      }))
+    }
+  } catch { /* ignore — DB unavailable during static build */ }
+
+  if (modules.length === 0) modules = curricula[slug] ?? []
   const totalLessons = modules.reduce((acc, m) => acc + m.lessons.length, 0)
 
   const includes = [

@@ -21,7 +21,12 @@ export default async function AdminCourseDetailPage({
       category: true,
       modules: {
         orderBy: { sortOrder: 'asc' },
-        include: { lessons: { orderBy: { sortOrder: 'asc' } } },
+        include: {
+          lessons: {
+            orderBy: { sortOrder: 'asc' },
+            select: { id: true, title: true, titleArabic: true, durationSeconds: true, isFreePreview: true, hlsReady: true, sortOrder: true },
+          },
+        },
       },
     },
   })

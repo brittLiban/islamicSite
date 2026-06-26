@@ -12,6 +12,53 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: qarawiyyin
+      MINIO_ROOT_PASSWORD: qarawiyyin
+    volumes:
+      - minio-data:/data
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://qarawiyyin:qarawiyyin@db:5432/qarawiyyin
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=qarawiyyin
+      - MINIO_SECRET_KEY=qarawiyyin
+      - MINIO_BUCKET_RAW=raw-uploads
+      - MINIO_BUCKET_HLS=hls-segments
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    restart: unless-stopped
+
   web:
     build:
       context: ./web
@@ -26,11 +73,24 @@ services:
       - NEXTAUTH_URL=http://localhost:3001
       - WATCHPACK_POLLING=true
       - NODE_ENV=development
+      - REDIS_URL=redis://redis:6379
+      - MINIO_ENDPOINT=minio
+      - MINIO_PORT=9000
+      - MINIO_ACCESS_KEY=qarawiyyin
+      - MINIO_SECRET_KEY=qarawiyyin
+      - MINIO_PUBLIC_URL=http://localhost:9000
+      - MINIO_BUCKET_RAW=raw-uploads
+      - MINIO_BUCKET_HLS=hls-segments
     ports:
       - "3001:3000"
     depends_on:
       db:
         condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
 
 volumes:
   db-data:
+  minio-data:
