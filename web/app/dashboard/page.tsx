@@ -6,12 +6,18 @@ import { Footer } from '@/components/layout/footer'
 import { CoursePoster } from '@/components/course/course-poster'
 import { courses } from '@/lib/data'
 import { logout } from '@/lib/actions'
+import { db } from '@/lib/db'
 
 const enrolled = courses.filter((c) => c.enrolled)
 
 export default async function DashboardPage() {
   const session = await auth()
   if (!session?.user) redirect('/login')
+
+  const userId = (session.user as { id?: string }).id
+  const unreadCount = userId ? await db.message.count({
+    where: { toUserId: userId, readAt: null },
+  }) : 0
 
   return (
     <>
@@ -43,11 +49,42 @@ export default async function DashboardPage() {
                 {session.user.email}
               </div>
             </div>
-            <form action={logout}>
-              <button type="submit" className="btn btn--ghost btn--sm" style={{ color: 'rgba(245,237,216,0.6)' }}>
-                Sign out
-              </button>
-            </form>
+            <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+              <Link
+                href="/dashboard/messages"
+                className="btn btn--ghost btn--sm"
+                style={{ color: 'rgba(245,237,216,0.7)', textDecoration: 'none', position: 'relative' }}
+              >
+                Messages
+                {unreadCount > 0 && (
+                  <span style={{
+                    position: 'absolute',
+                    top: -6,
+                    right: -6,
+                    background: 'var(--gold)',
+                    color: 'var(--forest-2)',
+                    borderRadius: '50%',
+                    width: 18,
+                    height: 18,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    fontSize: 10,
+                    fontWeight: 700,
+                  }}>
+                    {unreadCount}
+                  </span>
+                )}
+              </Link>
+              <Link href="/dashboard/account" className="btn btn--ghost btn--sm" style={{ color: 'rgba(245,237,216,0.6)', textDecoration: 'none' }}>
+                Account
+              </Link>
+              <form action={logout}>
+                <button type="submit" className="btn btn--ghost btn--sm" style={{ color: 'rgba(245,237,216,0.6)' }}>
+                  Sign out
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       </div>
@@ -60,7 +97,7 @@ export default async function DashboardPage() {
               { label: 'Enrolled courses', value: enrolled.length },
               { label: 'Lessons completed', value: 14 },
               { label: 'Certificates earned', value: 0 },
-              { label: 'Hours studied', value: '12.4' },
+              { label: 'Unread messages', value: unreadCount },
             ].map((s) => (
               <div key={s.label}>
                 <div style={{ fontFamily: 'var(--font-display)', fontSize: 26, fontWeight: 600, color: 'var(--accent)' }}>

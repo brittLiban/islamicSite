@@ -181,3 +181,21 @@ export async function deleteCoupon(code: string) {
   await db.coupon.delete({ where: { code } })
   revalidatePath('/admin/coupons')
 }
+
+// ── Student enrollment management ────────────────────────────
+
+export async function adminEnrollStudent(userId: string, courseId: string) {
+  await requireAdmin()
+  await db.enrollment.upsert({
+    where: { userId_courseId: { userId, courseId } },
+    update: {},
+    create: { userId, courseId, amountPaidCents: 0, couponCode: 'ADMIN_GIFT' },
+  })
+  revalidatePath(`/admin/students/${userId}`)
+}
+
+export async function adminUnenrollStudent(userId: string, courseId: string) {
+  await requireAdmin()
+  await db.enrollment.deleteMany({ where: { userId, courseId } })
+  revalidatePath(`/admin/students/${userId}`)
+}
